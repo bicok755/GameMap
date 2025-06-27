@@ -227,7 +227,7 @@ function actualizarMapaYJugador() {
   set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
   set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
   dibujarInventario(inventarioJugador);
-  dibujarMapa();
+  // ¡NO llames aquí a dibujarMapa ni dibujarJugadores!
 }
 
 // --- Movimiento ---
@@ -274,14 +274,14 @@ get(mapaGlobalRef).then(snapshot => {
     set(mapaGlobalRef, mapaFijo);
     mapaArray = copiarMapa(mapaFijo);
   }
-  dibujarMapa();
+  // No llamamos a dibujarMapa aquí, sino que lo hacemos al recibir jugadores
 });
 
 onValue(mapaGlobalRef, (snapshot) => {
   const data = snapshot.val();
   if (Array.isArray(data) && data.length === alto) {
     mapaArray = copiarMapa(data);
-    dibujarMapa();
+    // No llamamos a dibujarMapa aquí, sino que lo hacemos al recibir jugadores
   }
 });
 
