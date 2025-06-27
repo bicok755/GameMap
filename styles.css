@@ -46,6 +46,10 @@ h1 {
   background-color: #757575;
   color: #cfd8dc;
 }
+.bloque-rojo {
+  background-color: #ef5350;
+  color: #fff;
+}
 .jugador {
   font-size: 30px !important;
   position: relative;
