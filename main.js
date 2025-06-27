@@ -21,8 +21,12 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-const playerId = localStorage.getItem("jugadorId") || Math.random().toString(36).substring(2);
-localStorage.setItem("jugadorId", playerId);
+// Permite usar ?jugadorId=... en la URL para reconectar como el mismo jugador
+let playerId = new URLSearchParams(location.search).get('jugadorId');
+if (!playerId) {
+  playerId = localStorage.getItem("jugadorId") || Math.random().toString(36).substring(2);
+  localStorage.setItem("jugadorId", playerId);
+}
 
 const jugadorRef = ref(db, `jugadores/${playerId}`);
 onDisconnect(jugadorRef).remove();
@@ -48,17 +52,13 @@ const mapaFijo = [
   "CCCCCCCC"
 ];
 
-// Función para crear una copia 2D del mapa
 function copiarMapa(filas) {
   return filas.map(fila => fila.split(''));
 }
 
-// Cargar o inicializar el mapa global en Firebase
 const mapaGlobalRef = ref(db, "mapaGlobal");
-
 let mapaArray = copiarMapa(mapaFijo);
 
-// Inventario inicial: 3 bloques rojos (en un stack)
 function inventarioInicial() {
   const inv = Array(INVENTARIO_SIZE).fill(null);
   inv[0] = { tipo: "rojo", cantidad: 3 };
@@ -128,8 +128,9 @@ function esBloqueRojo(x, y) {
   return x >= 0 && x < ancho && y >= 0 && y < alto && (mapaArray[y][x] === BLOQUE_ROJO);
 }
 
-function distancia1(x1, y1, x2, y2) {
-  return Math.abs(x1 - x2) + Math.abs(y1 - y2) === 1;
+// Permite colocar o recoger en cruz o en diagonal (adyacentes 8-direcciones)
+function adyacente(x1, y1, x2, y2) {
+  return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1 && !(x1 === x2 && y1 === y2);
 }
 
 function dibujarMapa() {
@@ -181,9 +182,8 @@ function manejarClickCelda(x, y) {
     inventarioJugador[slotSeleccionado].tipo === 'rojo' &&
     inventarioJugador[slotSeleccionado].cantidad > 0 &&
     esVacio(x, y) &&
-    distancia1(posX, posY, x, y)
+    adyacente(posX, posY, x, y)
   ) {
-    // Poner bloque rojo en el mapa
     mapaArray[y][x] = BLOQUE_ROJO;
     inventarioJugador[slotSeleccionado].cantidad -= 1;
     if (inventarioJugador[slotSeleccionado].cantidad === 0) {
@@ -196,7 +196,7 @@ function manejarClickCelda(x, y) {
   // RECOGER bloque rojo
   if (
     esBloqueRojo(x, y) &&
-    distancia1(posX, posY, x, y)
+    adyacente(posX, posY, x, y)
   ) {
     // Busca stack existente con espacio
     let stackIdx = inventarioJugador.findIndex(
@@ -227,7 +227,7 @@ function actualizarMapaYJugador() {
   set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
   set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
   dibujarInventario(inventarioJugador);
-  // ¡NO llames aquí a dibujarMapa ni dibujarJugadores!
+  // NO dibujarMapa ni dibujarJugadores aquí, eso lo hacen los onValue
 }
 
 // --- Movimiento ---
