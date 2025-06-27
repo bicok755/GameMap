@@ -6,7 +6,6 @@ import {
   onValue,
   get,
   onDisconnect,
-  update
 } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 const firebaseConfig = {
@@ -26,7 +25,7 @@ const playerId = localStorage.getItem("jugadorId") || Math.random().toString(36)
 localStorage.setItem("jugadorId", playerId);
 
 const jugadorRef = ref(db, `jugadores/${playerId}`);
-onDisconnect(jugadorRef).remove(); // ✅ Borra al jugador si se desconecta
+onDisconnect(jugadorRef).remove();
 
 const mapaDiv = document.getElementById('mapa');
 const ancho = 8;
@@ -35,6 +34,7 @@ const celdas = [];
 
 const INVENTARIO_SIZE = 36;
 const BLOQUE_ROJO = "B";
+const MAX_STACK = 999;
 
 // Mapa inicial
 const mapaFijo = [
@@ -58,16 +58,13 @@ const mapaGlobalRef = ref(db, "mapaGlobal");
 
 let mapaArray = copiarMapa(mapaFijo);
 
-// Inventario inicial: 3 bloques rojos
+// Inventario inicial: 3 bloques rojos (en un stack)
 function inventarioInicial() {
   const inv = Array(INVENTARIO_SIZE).fill(null);
-  inv[0] = { tipo: "rojo", cantidad: 1 };
-  inv[1] = { tipo: "rojo", cantidad: 1 };
-  inv[2] = { tipo: "rojo", cantidad: 1 };
+  inv[0] = { tipo: "rojo", cantidad: 3 };
   return inv;
 }
 
-// Inventario
 let inventarioJugador = inventarioInicial();
 let slotSeleccionado = null;
 
@@ -98,6 +95,13 @@ function dibujarInventario(inventario) {
     if (inventario[i] && inventario[i].tipo === 'rojo') {
       slot.textContent = "🟥";
       slot.title = "Bloque rojo (" + inventario[i].cantidad + ")";
+      if (inventario[i].cantidad > 1) {
+        const cantidadSpan = document.createElement('span');
+        cantidadSpan.textContent = ' ' + inventario[i].cantidad;
+        cantidadSpan.style.fontSize = "13px";
+        cantidadSpan.style.color = "#222";
+        slot.appendChild(cantidadSpan);
+      }
       slot.onclick = () => {
         slotSeleccionado = (slotSeleccionado === i) ? null : i;
         dibujarInventario(inventarioJugador);
@@ -175,13 +179,17 @@ function manejarClickCelda(x, y) {
     slotSeleccionado !== null &&
     inventarioJugador[slotSeleccionado] &&
     inventarioJugador[slotSeleccionado].tipo === 'rojo' &&
+    inventarioJugador[slotSeleccionado].cantidad > 0 &&
     esVacio(x, y) &&
     distancia1(posX, posY, x, y)
   ) {
     // Poner bloque rojo en el mapa
     mapaArray[y][x] = BLOQUE_ROJO;
-    inventarioJugador[slotSeleccionado] = null;
-    slotSeleccionado = null;
+    inventarioJugador[slotSeleccionado].cantidad -= 1;
+    if (inventarioJugador[slotSeleccionado].cantidad === 0) {
+      inventarioJugador[slotSeleccionado] = null;
+      slotSeleccionado = null;
+    }
     actualizarMapaYJugador();
     return;
   }
@@ -190,7 +198,17 @@ function manejarClickCelda(x, y) {
     esBloqueRojo(x, y) &&
     distancia1(posX, posY, x, y)
   ) {
-    // Buscar hueco libre en inventario
+    // Busca stack existente con espacio
+    let stackIdx = inventarioJugador.findIndex(
+      s => s && s.tipo === "rojo" && s.cantidad < MAX_STACK
+    );
+    if (stackIdx !== -1) {
+      inventarioJugador[stackIdx].cantidad += 1;
+      mapaArray[y][x] = "C";
+      actualizarMapaYJugador();
+      return;
+    }
+    // Si no hay stack, busca slot vacío
     const libre = inventarioJugador.findIndex(s => !s);
     if (libre !== -1) {
       inventarioJugador[libre] = { tipo: "rojo", cantidad: 1 };
@@ -246,7 +264,6 @@ for (let y = 0; y < alto; y++) {
 
 // --- Sincronización ---
 
-// Mapa: cargar una vez, y escuchar cambios
 get(mapaGlobalRef).then(snapshot => {
   if (snapshot.exists()) {
     const data = snapshot.val();
@@ -254,7 +271,6 @@ get(mapaGlobalRef).then(snapshot => {
       mapaArray = copiarMapa(data);
     }
   } else {
-    // Si no existe, inicializar
     set(mapaGlobalRef, mapaFijo);
     mapaArray = copiarMapa(mapaFijo);
   }
@@ -294,7 +310,6 @@ get(jugadorRef).then(snapshot => {
   onValue(ref(db, 'jugadores'), (snapshot) => {
     const data = snapshot.val() || {};
     dibujarJugadores(data);
-    // Actualizar inventario si el nuestro cambia desde la base de datos
     if (data[playerId] && data[playerId].inventario) {
       inventarioJugador = data[playerId].inventario;
       dibujarInventario(inventarioJugador);
