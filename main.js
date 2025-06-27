@@ -1,4 +1,3 @@
-alert("El JavaScript se está ejecutando");
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import {
   getDatabase,
