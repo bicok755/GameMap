@@ -45,6 +45,7 @@ const mapaFijo = [
 
 const mapaArray = mapaFijo.map(fila => fila.split(''));
 
+// Crear el mapa visual
 for (let y = 0; y < alto; y++) {
   for (let x = 0; x < ancho; x++) {
     const div = document.createElement('div');
@@ -119,6 +120,7 @@ document.getElementById('down').onclick = () => mover('down');
 document.getElementById('left').onclick = () => mover('left');
 document.getElementById('right').onclick = () => mover('right');
 
+// Inicializa y sincroniza la posición del jugador
 get(jugadorRef).then(snapshot => {
   if (snapshot.exists()) {
     const data = snapshot.val();
