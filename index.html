@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mapa 8x8 móvil compacto</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+      background: #e0f7fa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      box-sizing: border-box;
+    }
+    h1 {
+      margin-bottom: 10px;
+      font-size: 1.4rem;
+      text-align: center;
+    }
+    #mapa {
+      display: grid;
+      grid-template-columns: repeat(8, 40px);
+      grid-template-rows: repeat(8, 40px);
+      gap: 4px;
+      background: #388e3c;
+      border-radius: 10px;
+      padding: 6px;
+      box-sizing: border-box;
+      user-select: none;
+    }
+    .celda {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 24px;
+    }
+    .cesped {
+      background-color: #4caf50;
+      color: #2e7d32;
+    }
+    .arbol {
+      background-color: #2e7d32;
+      color: #a5d6a7;
+    }
+    .roca {
+      background-color: #757575;
+      color: #cfd8dc;
+    }
+    .jugador {
+      font-size: 30px !important;
+      position: relative;
+      z-index: 10;
+    }
+    .controles {
+      margin-top: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+    }
+    .controles button {
+      font-size: 22px;
+      width: 50px;
+      height: 50px;
+      border-radius: 12px;
+      border: none;
+      background-color: #00796b;
+      color: white;
+      box-shadow: 0 3px 5px rgba(0,0,0,0.2);
+      user-select: none;
+    }
+    .controles button:active {
+      background-color: #004d40;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Mapa 8x8 compacto para móvil</h1>
+<div id="mapa"></div>
+
+<div class="controles" role="group" aria-label="Controles de movimiento">
+  <button id="up" aria-label="Mover arriba">⬆️</button><br />
+  <button id="left" aria-label="Mover izquierda">⬅️</button>
+  <button id="down" aria-label="Mover abajo">⬇️</button>
+  <button id="right" aria-label="Mover derecha">➡️</button>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
+  import {
+    getDatabase,
+    ref,
+    set,
+    onValue,
+    get,
+    onDisconnect
+  } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCuz3aFUEd5ltVJzqDphvo3Y2AwAJv_Wt8",
+    authDomain: "mapa-20bb9.firebaseapp.com",
+    databaseURL: "https://mapa-20bb9-default-rtdb.europe-west1.firebasedatabase.app/",
+    projectId: "mapa-20bb9",
+    storageBucket: "mapa-20bb9.appspot.com",
+    messagingSenderId: "38423210148",
+    appId: "1:38423210148:web:35b7c8bcbed5c1b2091e31"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  const playerId = localStorage.getItem("jugadorId") || Math.random().toString(36).substring(2);
+  localStorage.setItem("jugadorId", playerId);
+
+  const jugadorRef = ref(db, `jugadores/${playerId}`);
+  onDisconnect(jugadorRef).remove(); // ✅ Borra al jugador si se desconecta
+
+  const mapaDiv = document.getElementById('mapa');
+  const ancho = 8;
+  const alto = 8;
+  const celdas = [];
+
+  const mapaFijo = [
+    "CCCCCCCC",
+    "CCCAACCC",
+    "CCCCCACC",
+    "CCCRCCCC",
+    "CCCCCCCC",
+    "CCCAACCC",
+    "CCCCCRCC",
+    "CCCCCCCC"
+  ];
+
+  const mapaArray = mapaFijo.map(fila => fila.split(''));
+
+  for (let y = 0; y < alto; y++) {
+    for (let x = 0; x < ancho; x++) {
+      const div = document.createElement('div');
+      div.classList.add('celda');
+
+      const tipo = mapaArray[y][x];
+      if (tipo === 'C') {
+        div.classList.add('cesped');
+        div.textContent = "🌿";
+      } else if (tipo === 'A') {
+        div.classList.add('arbol');
+        div.textContent = "🌳";
+      } else if (tipo === 'R') {
+        div.classList.add('roca');
+        div.textContent = "🪨";
+      }
+
+      mapaDiv.appendChild(div);
+      celdas.push(div);
+    }
+  }
+
+  let posX = 1;
+  let posY = 1;
+
+  function dibujarJugadores(jugadores) {
+    for (let i = 0; i < celdas.length; i++) {
+      const y = Math.floor(i / ancho);
+      const x = i % ancho;
+      const tipo = mapaArray[y][x];
+      celdas[i].textContent = tipo === 'C' ? "🌿" : tipo === 'A' ? "🌳" : "🪨";
+      celdas[i].classList.remove('jugador');
+    }
+
+    for (const id in jugadores) {
+      const p = jugadores[id];
+      if (p && typeof p.x === 'number' && typeof p.y === 'number') {
+        const index = p.y * ancho + p.x;
+        if (celdas[index]) {
+          celdas[index].textContent = id === playerId ? '🧍' : '👤';
+          celdas[index].classList.add('jugador');
+        }
+      }
+    }
+  }
+
+  function actualizarPosicion() {
+    set(jugadorRef, { x: posX, y: posY });
+  }
+
+  function esTransitable(x, y) {
+    return x >= 0 && x < ancho && y >= 0 && y < alto && mapaArray[y][x] === 'C';
+  }
+
+  function mover(dir) {
+    let nx = posX;
+    let ny = posY;
+    if (dir === 'up') ny--;
+    else if (dir === 'down') ny++;
+    else if (dir === 'left') nx--;
+    else if (dir === 'right') nx++;
+
+    if (esTransitable(nx, ny)) {
+      posX = nx;
+      posY = ny;
+      actualizarPosicion();
+    }
+  }
+
+  document.getElementById('up').onclick = () => mover('up');
+  document.getElementById('down').onclick = () => mover('down');
+  document.getElementById('left').onclick = () => mover('left');
+  document.getElementById('right').onclick = () => mover('right');
+
+  get(jugadorRef).then(snapshot => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      if (esTransitable(data.x, data.y)) {
+        posX = data.x;
+        posY = data.y;
+      }
+    } else {
+      do {
+        posX = Math.floor(Math.random() * ancho);
+        posY = Math.floor(Math.random() * alto);
+      } while (!esTransitable(posX, posY));
+    }
+
+    actualizarPosicion();
+
+    onValue(ref(db, 'jugadores'), (snapshot) => {
+      const data = snapshot.val() || {};
+      dibujarJugadores(data);
+    });
+  });
+</script>
+
+</body>
+</html>
