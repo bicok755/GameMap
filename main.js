@@ -5,7 +5,8 @@ import {
   set,
   onValue,
   get,
-  onDisconnect
+  onDisconnect,
+  update
 } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 const firebaseConfig = {
@@ -33,8 +34,31 @@ const alto = 8;
 const celdas = [];
 
 const INVENTARIO_SIZE = 36;
+const BLOQUE_ROJO = "B";
 
-// Crear inventario inicial: 3 bloques rojos, resto vacío.
+// Mapa inicial
+const mapaFijo = [
+  "CCCCCCCC",
+  "CCCAACCC",
+  "CCCCCACC",
+  "CCCRCCCC",
+  "CCCCCCCC",
+  "CCCAACCC",
+  "CCCCCRCC",
+  "CCCCCCCC"
+];
+
+// Función para crear una copia 2D del mapa
+function copiarMapa(filas) {
+  return filas.map(fila => fila.split(''));
+}
+
+// Cargar o inicializar el mapa global en Firebase
+const mapaGlobalRef = ref(db, "mapaGlobal");
+
+let mapaArray = copiarMapa(mapaFijo);
+
+// Inventario inicial: 3 bloques rojos
 function inventarioInicial() {
   const inv = Array(INVENTARIO_SIZE).fill(null);
   inv[0] = { tipo: "rojo", cantidad: 1 };
@@ -43,13 +67,15 @@ function inventarioInicial() {
   return inv;
 }
 
-// Crear visualización del inventario
+// Inventario
+let inventarioJugador = inventarioInicial();
+let slotSeleccionado = null;
+
 function dibujarInventario(inventario) {
   let invDiv = document.getElementById('inventario');
   if (!invDiv) {
     invDiv = document.createElement('div');
     invDiv.id = 'inventario';
-    // Estilo básico, puedes mover esto a tu CSS si prefieres
     invDiv.style.display = "grid";
     invDiv.style.gridTemplateColumns = "repeat(9, 32px)";
     invDiv.style.gridGap = "4px";
@@ -62,7 +88,8 @@ function dibujarInventario(inventario) {
     slot.className = 'slot-inventario';
     slot.style.width = '32px';
     slot.style.height = '32px';
-    slot.style.border = '1px solid #999';
+    slot.style.border = slotSeleccionado === i ? '2px solid #e53935' : '1px solid #999';
+    slot.style.cursor = inventario[i] && inventario[i].tipo === 'rojo' ? 'pointer' : 'default';
     slot.style.borderRadius = '5px';
     slot.style.display = 'flex';
     slot.style.alignItems = 'center';
@@ -71,58 +98,65 @@ function dibujarInventario(inventario) {
     if (inventario[i] && inventario[i].tipo === 'rojo') {
       slot.textContent = "🟥";
       slot.title = "Bloque rojo (" + inventario[i].cantidad + ")";
+      slot.onclick = () => {
+        slotSeleccionado = (slotSeleccionado === i) ? null : i;
+        dibujarInventario(inventarioJugador);
+      };
     }
     invDiv.appendChild(slot);
   }
 }
 
-const mapaFijo = [
-  "CCCCCCCC",
-  "CCCAACCC",
-  "CCCCCACC",
-  "CCCRCCCC",
-  "CCCCCCCC",
-  "CCCAACCC",
-  "CCCCCRCC",
-  "CCCCCCCC"
-];
-
-const mapaArray = mapaFijo.map(fila => fila.split(''));
-
-// Crear el mapa visual
-for (let y = 0; y < alto; y++) {
-  for (let x = 0; x < ancho; x++) {
-    const div = document.createElement('div');
-    div.classList.add('celda');
-    const tipo = mapaArray[y][x];
-    if (tipo === 'C') {
-      div.classList.add('cesped');
-      div.textContent = "🌿";
-    } else if (tipo === 'A') {
-      div.classList.add('arbol');
-      div.textContent = "🌳";
-    } else if (tipo === 'R') {
-      div.classList.add('roca');
-      div.textContent = "🪨";
-    }
-    mapaDiv.appendChild(div);
-    celdas.push(div);
-  }
-}
+// --- MAPA ---
 
 let posX = 1;
 let posY = 1;
-let inventarioJugador = inventarioInicial();
+
+function esTransitable(x, y) {
+  return x >= 0 && x < ancho && y >= 0 && y < alto && (mapaArray[y][x] === 'C');
+}
+
+function esVacio(x, y) {
+  return x >= 0 && x < ancho && y >= 0 && y < alto && (mapaArray[y][x] === 'C');
+}
+
+function esBloqueRojo(x, y) {
+  return x >= 0 && x < ancho && y >= 0 && y < alto && (mapaArray[y][x] === BLOQUE_ROJO);
+}
+
+function distancia1(x1, y1, x2, y2) {
+  return Math.abs(x1 - x2) + Math.abs(y1 - y2) === 1;
+}
+
+function dibujarMapa() {
+  for (let y = 0; y < alto; y++) {
+    for (let x = 0; x < ancho; x++) {
+      const i = y * ancho + x;
+      const div = celdas[i];
+      div.className = 'celda';
+      const tipo = mapaArray[y][x];
+      if (tipo === 'C') {
+        div.classList.add('cesped');
+        div.textContent = "🌿";
+      } else if (tipo === 'A') {
+        div.classList.add('arbol');
+        div.textContent = "🌳";
+      } else if (tipo === 'R') {
+        div.classList.add('roca');
+        div.textContent = "🪨";
+      } else if (tipo === BLOQUE_ROJO) {
+        div.classList.add('bloque-rojo');
+        div.textContent = "🟥";
+      }
+      div.classList.remove('jugador');
+      // Manejador de click para poner/quitar bloques rojos
+      div.onclick = () => manejarClickCelda(x, y);
+    }
+  }
+}
 
 function dibujarJugadores(jugadores) {
-  for (let i = 0; i < celdas.length; i++) {
-    const y = Math.floor(i / ancho);
-    const x = i % ancho;
-    const tipo = mapaArray[y][x];
-    celdas[i].textContent = tipo === 'C' ? "🌿" : tipo === 'A' ? "🌳" : "🪨";
-    celdas[i].classList.remove('jugador');
-  }
-
+  dibujarMapa();
   for (const id in jugadores) {
     const p = jugadores[id];
     if (p && typeof p.x === 'number' && typeof p.y === 'number') {
@@ -135,13 +169,50 @@ function dibujarJugadores(jugadores) {
   }
 }
 
-function actualizarPosicion() {
-  set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
+function manejarClickCelda(x, y) {
+  // PONER bloque rojo
+  if (
+    slotSeleccionado !== null &&
+    inventarioJugador[slotSeleccionado] &&
+    inventarioJugador[slotSeleccionado].tipo === 'rojo' &&
+    esVacio(x, y) &&
+    distancia1(posX, posY, x, y)
+  ) {
+    // Poner bloque rojo en el mapa
+    mapaArray[y][x] = BLOQUE_ROJO;
+    inventarioJugador[slotSeleccionado] = null;
+    slotSeleccionado = null;
+    actualizarMapaYJugador();
+    return;
+  }
+  // RECOGER bloque rojo
+  if (
+    esBloqueRojo(x, y) &&
+    distancia1(posX, posY, x, y)
+  ) {
+    // Buscar hueco libre en inventario
+    const libre = inventarioJugador.findIndex(s => !s);
+    if (libre !== -1) {
+      inventarioJugador[libre] = { tipo: "rojo", cantidad: 1 };
+      mapaArray[y][x] = "C";
+      actualizarMapaYJugador();
+    } else {
+      alert("¡Inventario lleno!");
+    }
+    return;
+  }
 }
 
-function esTransitable(x, y) {
-  return x >= 0 && x < ancho && y >= 0 && y < alto && mapaArray[y][x] === 'C';
+// --- Sincronización MAPA+JUGADOR ---
+
+function actualizarMapaYJugador() {
+  set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
+  set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
+  dibujarInventario(inventarioJugador);
+  dibujarMapa();
 }
+
+// --- Movimiento ---
 
 function mover(dir) {
   let nx = posX;
@@ -150,11 +221,10 @@ function mover(dir) {
   else if (dir === 'down') ny++;
   else if (dir === 'left') nx--;
   else if (dir === 'right') nx++;
-
   if (esTransitable(nx, ny)) {
     posX = nx;
     posY = ny;
-    actualizarPosicion();
+    set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
   }
 }
 
@@ -163,15 +233,49 @@ document.getElementById('down').onclick = () => mover('down');
 document.getElementById('left').onclick = () => mover('left');
 document.getElementById('right').onclick = () => mover('right');
 
-// Inicializa y sincroniza la posición del jugador y el inventario
+// --- Inicialización visual ---
+
+for (let y = 0; y < alto; y++) {
+  for (let x = 0; x < ancho; x++) {
+    const div = document.createElement('div');
+    div.classList.add('celda');
+    mapaDiv.appendChild(div);
+    celdas.push(div);
+  }
+}
+
+// --- Sincronización ---
+
+// Mapa: cargar una vez, y escuchar cambios
+get(mapaGlobalRef).then(snapshot => {
+  if (snapshot.exists()) {
+    const data = snapshot.val();
+    if (Array.isArray(data) && data.length === alto) {
+      mapaArray = copiarMapa(data);
+    }
+  } else {
+    // Si no existe, inicializar
+    set(mapaGlobalRef, mapaFijo);
+    mapaArray = copiarMapa(mapaFijo);
+  }
+  dibujarMapa();
+});
+
+onValue(mapaGlobalRef, (snapshot) => {
+  const data = snapshot.val();
+  if (Array.isArray(data) && data.length === alto) {
+    mapaArray = copiarMapa(data);
+    dibujarMapa();
+  }
+});
+
 get(jugadorRef).then(snapshot => {
   if (snapshot.exists()) {
     const data = snapshot.val();
-    if (esTransitable(data.x, data.y)) {
+    if (typeof data.x === "number" && typeof data.y === "number") {
       posX = data.x;
       posY = data.y;
     }
-    // Inventario: si existe y es válido, lo usamos, si no, lo inicializamos
     if (data.inventario && Array.isArray(data.inventario) && data.inventario.length === INVENTARIO_SIZE) {
       inventarioJugador = data.inventario;
     } else {
@@ -184,8 +288,7 @@ get(jugadorRef).then(snapshot => {
     } while (!esTransitable(posX, posY));
     inventarioJugador = inventarioInicial();
   }
-
-  actualizarPosicion();
+  set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
   dibujarInventario(inventarioJugador);
 
   onValue(ref(db, 'jugadores'), (snapshot) => {
