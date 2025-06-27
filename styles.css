@@ -1,17 +1,74 @@
-/* styles.css */
-#board {
-  display: grid;
-  grid-template-columns: repeat(4, 30px);
-  grid-template-rows: repeat(4, 30px);
-  gap: 2px;
-  background: green;
-  width: max-content;
-  margin: 20px auto;
+body {
+  margin: 0;
+  padding: 10px;
+  font-family: Arial, sans-serif;
+  background: #e0f7fa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100vh;
+  box-sizing: border-box;
 }
-
-.cell {
-  width: 30px;
-  height: 30px;
-  background: white;
-  border: 1px solid #444;
+h1 {
+  margin-bottom: 10px;
+  font-size: 1.4rem;
+  text-align: center;
+}
+#mapa {
+  display: grid;
+  grid-template-columns: repeat(8, 40px);
+  grid-template-rows: repeat(8, 40px);
+  gap: 4px;
+  background: #388e3c;
+  border-radius: 10px;
+  padding: 6px;
+  box-sizing: border-box;
+  user-select: none;
+}
+.celda {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 24px;
+}
+.cesped {
+  background-color: #4caf50;
+  color: #2e7d32;
+}
+.arbol {
+  background-color: #2e7d32;
+  color: #a5d6a7;
+}
+.roca {
+  background-color: #757575;
+  color: #cfd8dc;
+}
+.jugador {
+  font-size: 30px !important;
+  position: relative;
+  z-index: 10;
+}
+.controles {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+.controles button {
+  font-size: 22px;
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  border: none;
+  background-color: #00796b;
+  color: white;
+  box-shadow: 0 3px 5px rgba(0,0,0,0.2);
+  user-select: none;
+}
+.controles button:active {
+  background-color: #004d40;
 }
