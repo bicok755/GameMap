@@ -226,6 +226,34 @@ function ponerSemilla(x, y) {
   }, 15500);
 }
 
+// --- FUNCIÓN DE PRUEBA PARA REPOBLAR ÁRBOLES ---
+// Añade 3 árboles en zonas vacías. Esta función es temporal y puede ser borrada después.
+function repoblarArbolesPrueba() {
+  let vacios = [];
+  for (let y = 0; y < alto; y++) {
+    for (let x = 0; x < ancho; x++) {
+      if (mapaArray[y][x] === 'C') vacios.push({x, y});
+    }
+  }
+  for (let i = 0; i < 3 && vacios.length > 0; i++) {
+    const idx = Math.floor(Math.random() * vacios.length);
+    const pos = vacios.splice(idx, 1)[0];
+    mapaArray[pos.y][pos.x] = ARBOL;
+  }
+  set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
+}
+
+// Botón de prueba para repoblar árboles, será eliminado más adelante
+let botonRepoblar = document.getElementById('repoblarArbolesPrueba');
+if (!botonRepoblar) {
+  botonRepoblar = document.createElement('button');
+  botonRepoblar.id = 'repoblarArbolesPrueba';
+  botonRepoblar.textContent = "Repoblar 3 árboles (PRUEBA)";
+  botonRepoblar.style.marginBottom = "12px";
+  botonRepoblar.onclick = () => repoblarArbolesPrueba();
+  document.body.insertBefore(botonRepoblar, mapaDiv);
+}
+
 // --- MANEJO DE CLICK EN CELDA ---
 
 function manejarClickCelda(x, y) {
@@ -275,41 +303,36 @@ function manejarClickCelda(x, y) {
     mapaArray[y][x] === ARBOL &&
     adyacente(posX, posY, x, y)
   ) {
-    let maderaRestante = 4, semillaRestante = 1;
-    // Apila madera
-    while (maderaRestante > 0) {
-      let maderaStack = inventarioJugador.findIndex(
-        s => s && s.tipo === "madera" && s.cantidad < MAX_STACK
-      );
-      if (maderaStack !== -1) {
-        const porMeter = Math.min(MAX_STACK - inventarioJugador[maderaStack].cantidad, maderaRestante);
-        inventarioJugador[maderaStack].cantidad += porMeter;
-        maderaRestante -= porMeter;
+    // Añadir 4 madera
+    let maderaPorAgregar = 4;
+    while (maderaPorAgregar > 0) {
+      let idx = inventarioJugador.findIndex(s => s && s.tipo === "madera" && s.cantidad < MAX_STACK);
+      if (idx !== -1) {
+        let espacio = MAX_STACK - inventarioJugador[idx].cantidad;
+        let meter = Math.min(espacio, maderaPorAgregar);
+        inventarioJugador[idx].cantidad += meter;
+        maderaPorAgregar -= meter;
       } else {
-        const libre = inventarioJugador.findIndex(s => !s);
+        let libre = inventarioJugador.findIndex(s => !s);
         if (libre !== -1) {
-          const porMeter = Math.min(MAX_STACK, maderaRestante);
-          inventarioJugador[libre] = { tipo: "madera", cantidad: porMeter };
-          maderaRestante -= porMeter;
+          let meter = Math.min(MAX_STACK, maderaPorAgregar);
+          inventarioJugador[libre] = { tipo: "madera", cantidad: meter };
+          maderaPorAgregar -= meter;
         } else {
-          break; // Lo que no cabe se elimina
+          break; // descarta lo que no cabe
         }
       }
     }
-    // Apila semilla
-    if (semillaRestante > 0) {
-      let semillaStack = inventarioJugador.findIndex(
-        s => s && s.tipo === "semilla" && s.cantidad < MAX_STACK
-      );
-      if (semillaStack !== -1) {
-        inventarioJugador[semillaStack].cantidad += semillaRestante;
-      } else {
-        const libre = inventarioJugador.findIndex(s => !s);
-        if (libre !== -1) {
-          inventarioJugador[libre] = { tipo: "semilla", cantidad: semillaRestante };
-        }
-        // Si no hay sitio, se elimina la semilla sobrante
+    // Añadir 1 semilla
+    let idx = inventarioJugador.findIndex(s => s && s.tipo === "semilla" && s.cantidad < MAX_STACK);
+    if (idx !== -1) {
+      inventarioJugador[idx].cantidad += 1;
+    } else {
+      let libre = inventarioJugador.findIndex(s => !s);
+      if (libre !== -1) {
+        inventarioJugador[libre] = { tipo: "semilla", cantidad: 1 };
       }
+      // Si no hay slot libre, descarta la semilla
     }
     mapaArray[y][x] = "C";
     actualizarMapaYJugador();
