@@ -206,28 +206,19 @@ function dibujarJugadores(jugadores) {
 
 function ponerSemilla(x, y) {
   mapaArray[y][x] = SEMILLA;
+  dibujarMapa();
   actualizarMapaYJugador();
 
-  const semillasRef = ref(db, "semillas/" + x + "_" + y);
-  const crecerEn = Date.now() + 15000;
-  set(semillasRef, {x, y, crecerEn});
-
   setTimeout(() => {
-    get(semillasRef).then(snapshot => {
-      const data = snapshot.val();
-      if (data && data.crecerEn <= Date.now()) {
-        if (mapaArray[y][x] === SEMILLA) {
-          mapaArray[y][x] = ARBOL;
-          set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
-        }
-        set(semillasRef, null);
-      }
-    });
-  }, 15500);
+    if (mapaArray[y][x] === SEMILLA) {
+      mapaArray[y][x] = ARBOL;
+      dibujarMapa();
+      actualizarMapaYJugador();
+    }
+  }, 15000);
 }
 
 // --- FUNCIÓN DE PRUEBA PARA REPOBLAR ÁRBOLES ---
-// Añade 3 árboles en zonas vacías. Esta función es temporal y puede ser borrada después.
 function repoblarArbolesPrueba() {
   let vacios = [];
   for (let y = 0; y < alto; y++) {
@@ -240,10 +231,10 @@ function repoblarArbolesPrueba() {
     const pos = vacios.splice(idx, 1)[0];
     mapaArray[pos.y][pos.x] = ARBOL;
   }
-  set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
+  dibujarMapa();
+  actualizarMapaYJugador();
 }
 
-// Botón de prueba para repoblar árboles, será eliminado más adelante
 let botonRepoblar = document.getElementById('repoblarArbolesPrueba');
 if (!botonRepoblar) {
   botonRepoblar = document.createElement('button');
@@ -252,6 +243,29 @@ if (!botonRepoblar) {
   botonRepoblar.style.marginBottom = "12px";
   botonRepoblar.onclick = () => repoblarArbolesPrueba();
   document.body.insertBefore(botonRepoblar, mapaDiv);
+}
+
+// --- AGREGAR AL INVENTARIO (apila y respeta máximo, tipo Minecraft) ---
+function agregarAlInventario(tipo, cantidad) {
+  while (cantidad > 0) {
+    let idx = inventarioJugador.findIndex(
+      s => s && s.tipo === tipo && s.cantidad < MAX_STACK
+    );
+    if (idx !== -1) {
+      let meter = Math.min(MAX_STACK - inventarioJugador[idx].cantidad, cantidad);
+      inventarioJugador[idx].cantidad += meter;
+      cantidad -= meter;
+    } else {
+      let libre = inventarioJugador.findIndex(s => !s);
+      if (libre !== -1) {
+        let meter = Math.min(MAX_STACK, cantidad);
+        inventarioJugador[libre] = { tipo, cantidad: meter };
+        cantidad -= meter;
+      } else {
+        break;
+      }
+    }
+  }
 }
 
 // --- MANEJO DE CLICK EN CELDA ---
@@ -268,11 +282,13 @@ function manejarClickCelda(x, y) {
     !hayJugadorEn(x, y)
   ) {
     mapaArray[y][x] = BLOQUE_ROJO;
-    inventarioJugador[slotSeleccionado].cantidad -= 1;
+    inventarioJugador[slotSeleccionado].cantidad--;
     if (inventarioJugador[slotSeleccionado].cantidad === 0) {
       inventarioJugador[slotSeleccionado] = null;
       slotSeleccionado = null;
     }
+    dibujarMapa();
+    dibujarInventario(inventarioJugador);
     actualizarMapaYJugador();
     return;
   }
@@ -281,60 +297,10 @@ function manejarClickCelda(x, y) {
     esBloqueRojo(x, y) &&
     adyacente(posX, posY, x, y)
   ) {
-    let stackIdx = inventarioJugador.findIndex(
-      s => s && s.tipo === "rojo" && s.cantidad < MAX_STACK
-    );
-    if (stackIdx !== -1) {
-      inventarioJugador[stackIdx].cantidad += 1;
-      mapaArray[y][x] = "C";
-      actualizarMapaYJugador();
-      return;
-    }
-    const libre = inventarioJugador.findIndex(s => !s);
-    if (libre !== -1) {
-      inventarioJugador[libre] = { tipo: "rojo", cantidad: 1 };
-      mapaArray[y][x] = "C";
-      actualizarMapaYJugador();
-    }
-    return;
-  }
-  // RECOGER árbol: da 4 madera y 1 semilla, descarta lo que no cabe
-  if (
-    mapaArray[y][x] === ARBOL &&
-    adyacente(posX, posY, x, y)
-  ) {
-    // Añadir 4 madera
-    let maderaPorAgregar = 4;
-    while (maderaPorAgregar > 0) {
-      let idx = inventarioJugador.findIndex(s => s && s.tipo === "madera" && s.cantidad < MAX_STACK);
-      if (idx !== -1) {
-        let espacio = MAX_STACK - inventarioJugador[idx].cantidad;
-        let meter = Math.min(espacio, maderaPorAgregar);
-        inventarioJugador[idx].cantidad += meter;
-        maderaPorAgregar -= meter;
-      } else {
-        let libre = inventarioJugador.findIndex(s => !s);
-        if (libre !== -1) {
-          let meter = Math.min(MAX_STACK, maderaPorAgregar);
-          inventarioJugador[libre] = { tipo: "madera", cantidad: meter };
-          maderaPorAgregar -= meter;
-        } else {
-          break; // descarta lo que no cabe
-        }
-      }
-    }
-    // Añadir 1 semilla
-    let idx = inventarioJugador.findIndex(s => s && s.tipo === "semilla" && s.cantidad < MAX_STACK);
-    if (idx !== -1) {
-      inventarioJugador[idx].cantidad += 1;
-    } else {
-      let libre = inventarioJugador.findIndex(s => !s);
-      if (libre !== -1) {
-        inventarioJugador[libre] = { tipo: "semilla", cantidad: 1 };
-      }
-      // Si no hay slot libre, descarta la semilla
-    }
+    agregarAlInventario("rojo", 1);
     mapaArray[y][x] = "C";
+    dibujarMapa();
+    dibujarInventario(inventarioJugador);
     actualizarMapaYJugador();
     return;
   }
@@ -343,24 +309,14 @@ function manejarClickCelda(x, y) {
     mapaArray[y][x] === BLOQUE_MADERA &&
     adyacente(posX, posY, x, y)
   ) {
-    let stackIdx = inventarioJugador.findIndex(
-      s => s && s.tipo === "madera" && s.cantidad < MAX_STACK
-    );
-    if (stackIdx !== -1) {
-      inventarioJugador[stackIdx].cantidad += 1;
-      mapaArray[y][x] = "C";
-      actualizarMapaYJugador();
-      return;
-    }
-    const libre = inventarioJugador.findIndex(s => !s);
-    if (libre !== -1) {
-      inventarioJugador[libre] = { tipo: "madera", cantidad: 1 };
-      mapaArray[y][x] = "C";
-      actualizarMapaYJugador();
-    }
+    agregarAlInventario("madera", 1);
+    mapaArray[y][x] = "C";
+    dibujarMapa();
+    dibujarInventario(inventarioJugador);
+    actualizarMapaYJugador();
     return;
   }
-  // PONER madera como objeto (tipo suelto)
+  // PONER madera
   if (
     slotSeleccionado !== null &&
     inventarioJugador[slotSeleccionado] &&
@@ -371,11 +327,13 @@ function manejarClickCelda(x, y) {
     !hayJugadorEn(x, y)
   ) {
     mapaArray[y][x] = BLOQUE_MADERA;
-    inventarioJugador[slotSeleccionado].cantidad -= 1;
+    inventarioJugador[slotSeleccionado].cantidad--;
     if (inventarioJugador[slotSeleccionado].cantidad === 0) {
       inventarioJugador[slotSeleccionado] = null;
       slotSeleccionado = null;
     }
+    dibujarMapa();
+    dibujarInventario(inventarioJugador);
     actualizarMapaYJugador();
     return;
   }
@@ -389,34 +347,38 @@ function manejarClickCelda(x, y) {
     adyacente(posX, posY, x, y) &&
     !hayJugadorEn(x, y)
   ) {
-    inventarioJugador[slotSeleccionado].cantidad -= 1;
+    inventarioJugador[slotSeleccionado].cantidad--;
     if (inventarioJugador[slotSeleccionado].cantidad === 0) {
       inventarioJugador[slotSeleccionado] = null;
       slotSeleccionado = null;
     }
     ponerSemilla(x, y);
+    dibujarInventario(inventarioJugador);
     return;
   }
-  // RECOGER semilla del mapa (por si existiera)
+  // RECOGER árbol: +4 madera y +1 semilla
+  if (
+    mapaArray[y][x] === ARBOL &&
+    adyacente(posX, posY, x, y)
+  ) {
+    agregarAlInventario("madera", 4);
+    agregarAlInventario("semilla", 1);
+    mapaArray[y][x] = "C";
+    dibujarMapa();
+    dibujarInventario(inventarioJugador);
+    actualizarMapaYJugador();
+    return;
+  }
+  // RECOGER semilla del suelo (por si acaso)
   if (
     mapaArray[y][x] === SEMILLA &&
     adyacente(posX, posY, x, y)
   ) {
-    let stackIdx = inventarioJugador.findIndex(
-      s => s && s.tipo === "semilla" && s.cantidad < MAX_STACK
-    );
-    if (stackIdx !== -1) {
-      inventarioJugador[stackIdx].cantidad += 1;
-      mapaArray[y][x] = "C";
-      actualizarMapaYJugador();
-      return;
-    }
-    const libre = inventarioJugador.findIndex(s => !s);
-    if (libre !== -1) {
-      inventarioJugador[libre] = { tipo: "semilla", cantidad: 1 };
-      mapaArray[y][x] = "C";
-      actualizarMapaYJugador();
-    }
+    agregarAlInventario("semilla", 1);
+    mapaArray[y][x] = "C";
+    dibujarMapa();
+    dibujarInventario(inventarioJugador);
+    actualizarMapaYJugador();
     return;
   }
 }
@@ -426,7 +388,6 @@ function manejarClickCelda(x, y) {
 function actualizarMapaYJugador() {
   set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
   set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
-  dibujarInventario(inventarioJugador);
 }
 
 // --- Movimiento ---
@@ -441,6 +402,8 @@ function mover(dir) {
   if (esTransitable(nx, ny) && !hayJugadorEn(nx, ny)) {
     posX = nx;
     posY = ny;
+    dibujarMapa();
+    dibujarJugadores(jugadoresActuales);
     set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
   }
 }
@@ -473,6 +436,7 @@ get(mapaGlobalRef).then(snapshot => {
     set(mapaGlobalRef, mapaFijo);
     mapaArray = copiarMapa(mapaFijo);
   }
+  dibujarMapa();
 });
 
 onValue(mapaGlobalRef, (snapshot) => {
@@ -480,6 +444,7 @@ onValue(mapaGlobalRef, (snapshot) => {
   if (Array.isArray(data) && data.length === alto) {
     mapaArray = copiarMapa(data);
   }
+  dibujarMapa();
 });
 
 get(jugadorRef).then(snapshot => {
@@ -501,7 +466,6 @@ get(jugadorRef).then(snapshot => {
     } while (!esTransitable(posX, posY));
     inventarioJugador = inventarioInicial();
   }
-  set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
   dibujarInventario(inventarioJugador);
 
   onValue(ref(db, 'jugadores'), (snapshot) => {
@@ -512,31 +476,4 @@ get(jugadorRef).then(snapshot => {
       dibujarInventario(inventarioJugador);
     }
   });
-});
-
-onValue(ref(db, "semillas"), (snapshot) => {
-  const semillas = snapshot.val() || {};
-  for (const key in semillas) {
-    const s = semillas[key];
-    if (s && s.crecerEn && Date.now() > s.crecerEn) {
-      if (mapaArray[s.y][s.x] === SEMILLA) {
-        mapaArray[s.y][s.x] = ARBOL;
-        set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
-      }
-      set(ref(db, "semillas/" + key), null);
-    } else if (s && s.crecerEn && Date.now() < s.crecerEn) {
-      setTimeout(() => {
-        get(ref(db, "semillas/" + key)).then(snapshot => {
-          const data = snapshot.val();
-          if (data && data.crecerEn <= Date.now()) {
-            if (mapaArray[data.y][data.x] === SEMILLA) {
-              mapaArray[data.y][data.x] = ARBOL;
-              set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
-            }
-            set(ref(db, "semillas/" + key), null);
-          }
-        });
-      }, s.crecerEn - Date.now() + 500);
-    }
-  }
 });
