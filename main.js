@@ -6,9 +6,11 @@ import {
   onValue,
   get,
   onDisconnect,
+  runTransaction,
 } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 const firebaseConfig = {
+  // ...tu configuración...
   apiKey: "AIzaSyCuz3aFUEd5ltVJzqDphvo3Y2AwAJv_Wt8",
   authDomain: "mapa-20bb9.firebaseapp.com",
   databaseURL: "https://mapa-20bb9-default-rtdb.europe-west1.firebasedatabase.app/",
@@ -37,6 +39,9 @@ const celdas = [];
 
 const INVENTARIO_SIZE = 36;
 const BLOQUE_ROJO = "B";
+const BLOQUE_MADERA = "M";
+const SEMILLA = "S";
+const ARBOL = "A";
 const MAX_STACK = 999;
 
 const mapaFijo = [
@@ -65,8 +70,6 @@ function inventarioInicial() {
 
 let inventarioJugador = inventarioInicial();
 let slotSeleccionado = null;
-
-// Mantén la lista de jugadores en memoria para chequeo rápido
 let jugadoresActuales = {};
 
 function dibujarInventario(inventario) {
@@ -87,15 +90,26 @@ function dibujarInventario(inventario) {
     slot.style.width = '32px';
     slot.style.height = '32px';
     slot.style.border = slotSeleccionado === i ? '2px solid #e53935' : '1px solid #999';
-    slot.style.cursor = inventario[i] && inventario[i].tipo === 'rojo' ? 'pointer' : 'default';
+    slot.style.cursor = inventario[i] ? 'pointer' : 'default';
     slot.style.borderRadius = '5px';
     slot.style.display = 'flex';
     slot.style.alignItems = 'center';
     slot.style.justifyContent = 'center';
     slot.style.background = '#f5f5f5';
-    if (inventario[i] && inventario[i].tipo === 'rojo') {
-      slot.textContent = "🟥";
-      slot.title = "Bloque rojo (" + inventario[i].cantidad + ")";
+    if (inventario[i]) {
+      if (inventario[i].tipo === 'rojo') {
+        slot.textContent = "🟥";
+        slot.title = "Bloque rojo (" + inventario[i].cantidad + ")";
+      } else if (inventario[i].tipo === 'arbol') {
+        slot.textContent = "🌳";
+        slot.title = "Árbol (" + inventario[i].cantidad + ")";
+      } else if (inventario[i].tipo === 'madera') {
+        slot.textContent = "🪵";
+        slot.title = "Madera (" + inventario[i].cantidad + ")";
+      } else if (inventario[i].tipo === 'semilla') {
+        slot.textContent = "🌱";
+        slot.title = "Semilla de árbol (" + inventario[i].cantidad + ")";
+      }
       if (inventario[i].cantidad > 1) {
         const cantidadSpan = document.createElement('span');
         cantidadSpan.textContent = ' ' + inventario[i].cantidad;
@@ -134,7 +148,6 @@ function adyacente(x1, y1, x2, y2) {
   return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1 && !(x1 === x2 && y1 === y2);
 }
 
-// Chequea si hay algún jugador en la posición (x, y)
 function hayJugadorEn(x, y) {
   for (const id in jugadoresActuales) {
     const p = jugadoresActuales[id];
@@ -155,7 +168,7 @@ function dibujarMapa() {
       if (tipo === 'C') {
         div.classList.add('cesped');
         div.textContent = "🌿";
-      } else if (tipo === 'A') {
+      } else if (tipo === ARBOL) {
         div.classList.add('arbol');
         div.textContent = "🌳";
       } else if (tipo === 'R') {
@@ -164,16 +177,21 @@ function dibujarMapa() {
       } else if (tipo === BLOQUE_ROJO) {
         div.classList.add('bloque-rojo');
         div.textContent = "🟥";
+      } else if (tipo === BLOQUE_MADERA) {
+        div.classList.add('madera');
+        div.textContent = "🪵";
+      } else if (tipo === SEMILLA) {
+        div.classList.add('semilla');
+        div.textContent = "🌱";
       }
       div.classList.remove('jugador');
-      // Manejador de click para poner/quitar bloques rojos
       div.onclick = () => manejarClickCelda(x, y);
     }
   }
 }
 
 function dibujarJugadores(jugadores) {
-  jugadoresActuales = jugadores; // Actualiza la referencia global
+  jugadoresActuales = jugadores;
   dibujarMapa();
   for (const id in jugadores) {
     const p = jugadores[id];
@@ -187,6 +205,37 @@ function dibujarJugadores(jugadores) {
   }
 }
 
+// --- GESTIÓN DE SEMILLAS QUE CRECEN ---
+
+function ponerSemilla(x, y) {
+  // Deja la semilla en el mapa y agenda su crecimiento en 15s
+  mapaArray[y][x] = SEMILLA;
+  actualizarMapaYJugador();
+
+  // Guardar en la base de datos cuándo debe crecer
+  // Se guarda en /semillas/x_y: {x, y, timestamp}
+  const semillasRef = ref(db, "semillas/" + x + "_" + y);
+  const crecerEn = Date.now() + 15000;
+  set(semillasRef, {x, y, crecerEn});
+
+  setTimeout(() => {
+    // Volver a consultar si sigue la semilla y si ya es hora de crecer
+    get(semillasRef).then(snapshot => {
+      const data = snapshot.val();
+      if (data && data.crecerEn <= Date.now()) {
+        // Solo crece si sigue siendo semilla
+        if (mapaArray[y][x] === SEMILLA) {
+          mapaArray[y][x] = ARBOL;
+          set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
+        }
+        set(semillasRef, null); // quitamos la info de la semilla
+      }
+    });
+  }, 15500);
+}
+
+// --- MANEJO DE CLICK EN CELDA ---
+
 function manejarClickCelda(x, y) {
   // PONER bloque rojo
   if (
@@ -196,7 +245,7 @@ function manejarClickCelda(x, y) {
     inventarioJugador[slotSeleccionado].cantidad > 0 &&
     esVacio(x, y) &&
     adyacente(posX, posY, x, y) &&
-    !hayJugadorEn(x, y) // <-- NO permitir si hay jugador presente
+    !hayJugadorEn(x, y)
   ) {
     mapaArray[y][x] = BLOQUE_ROJO;
     inventarioJugador[slotSeleccionado].cantidad -= 1;
@@ -212,7 +261,6 @@ function manejarClickCelda(x, y) {
     esBloqueRojo(x, y) &&
     adyacente(posX, posY, x, y)
   ) {
-    // Busca stack existente con espacio
     let stackIdx = inventarioJugador.findIndex(
       s => s && s.tipo === "rojo" && s.cantidad < MAX_STACK
     );
@@ -222,10 +270,141 @@ function manejarClickCelda(x, y) {
       actualizarMapaYJugador();
       return;
     }
-    // Si no hay stack, busca slot vacío
     const libre = inventarioJugador.findIndex(s => !s);
     if (libre !== -1) {
       inventarioJugador[libre] = { tipo: "rojo", cantidad: 1 };
+      mapaArray[y][x] = "C";
+      actualizarMapaYJugador();
+    } else {
+      alert("¡Inventario lleno!");
+    }
+    return;
+  }
+  // RECOGER árbol: da 4 madera y 1 semilla
+  if (
+    mapaArray[y][x] === ARBOL &&
+    adyacente(posX, posY, x, y)
+  ) {
+    let maderaRestante = 4, semillaRestante = 1;
+    // Apila madera
+    while (maderaRestante > 0) {
+      let maderaStack = inventarioJugador.findIndex(
+        s => s && s.tipo === "madera" && s.cantidad < MAX_STACK
+      );
+      if (maderaStack !== -1) {
+        const porMeter = Math.min(MAX_STACK - inventarioJugador[maderaStack].cantidad, maderaRestante);
+        inventarioJugador[maderaStack].cantidad += porMeter;
+        maderaRestante -= porMeter;
+      } else {
+        const libre = inventarioJugador.findIndex(s => !s);
+        if (libre !== -1) {
+          const porMeter = Math.min(MAX_STACK, maderaRestante);
+          inventarioJugador[libre] = { tipo: "madera", cantidad: porMeter };
+          maderaRestante -= porMeter;
+        } else {
+          alert("¡Inventario lleno! Solo recogiste parte de la madera.");
+          break;
+        }
+      }
+    }
+    // Apila semilla
+    if (semillaRestante > 0) {
+      let semillaStack = inventarioJugador.findIndex(
+        s => s && s.tipo === "semilla" && s.cantidad < MAX_STACK
+      );
+      if (semillaStack !== -1) {
+        inventarioJugador[semillaStack].cantidad += semillaRestante;
+      } else {
+        const libre = inventarioJugador.findIndex(s => !s);
+        if (libre !== -1) {
+          inventarioJugador[libre] = { tipo: "semilla", cantidad: semillaRestante };
+        } else {
+          alert("¡Inventario lleno! No pudiste recoger semillas.");
+        }
+      }
+    }
+    mapaArray[y][x] = "C";
+    actualizarMapaYJugador();
+    return;
+  }
+  // RECOGER madera suelta del mapa
+  if (
+    mapaArray[y][x] === BLOQUE_MADERA &&
+    adyacente(posX, posY, x, y)
+  ) {
+    let stackIdx = inventarioJugador.findIndex(
+      s => s && s.tipo === "madera" && s.cantidad < MAX_STACK
+    );
+    if (stackIdx !== -1) {
+      inventarioJugador[stackIdx].cantidad += 1;
+      mapaArray[y][x] = "C";
+      actualizarMapaYJugador();
+      return;
+    }
+    const libre = inventarioJugador.findIndex(s => !s);
+    if (libre !== -1) {
+      inventarioJugador[libre] = { tipo: "madera", cantidad: 1 };
+      mapaArray[y][x] = "C";
+      actualizarMapaYJugador();
+    } else {
+      alert("¡Inventario lleno!");
+    }
+    return;
+  }
+  // PONER madera como objeto (tipo suelto)
+  if (
+    slotSeleccionado !== null &&
+    inventarioJugador[slotSeleccionado] &&
+    inventarioJugador[slotSeleccionado].tipo === 'madera' &&
+    inventarioJugador[slotSeleccionado].cantidad > 0 &&
+    esVacio(x, y) &&
+    adyacente(posX, posY, x, y) &&
+    !hayJugadorEn(x, y)
+  ) {
+    mapaArray[y][x] = BLOQUE_MADERA;
+    inventarioJugador[slotSeleccionado].cantidad -= 1;
+    if (inventarioJugador[slotSeleccionado].cantidad === 0) {
+      inventarioJugador[slotSeleccionado] = null;
+      slotSeleccionado = null;
+    }
+    actualizarMapaYJugador();
+    return;
+  }
+  // PONER semilla de árbol
+  if (
+    slotSeleccionado !== null &&
+    inventarioJugador[slotSeleccionado] &&
+    inventarioJugador[slotSeleccionado].tipo === 'semilla' &&
+    inventarioJugador[slotSeleccionado].cantidad > 0 &&
+    esVacio(x, y) &&
+    adyacente(posX, posY, x, y) &&
+    !hayJugadorEn(x, y)
+  ) {
+    inventarioJugador[slotSeleccionado].cantidad -= 1;
+    if (inventarioJugador[slotSeleccionado].cantidad === 0) {
+      inventarioJugador[slotSeleccionado] = null;
+      slotSeleccionado = null;
+    }
+    ponerSemilla(x, y);
+    return;
+  }
+  // RECOGER semilla del mapa (por si existiera, aunque no se deja nunca suelta, solo por si acaso)
+  if (
+    mapaArray[y][x] === SEMILLA &&
+    adyacente(posX, posY, x, y)
+  ) {
+    let stackIdx = inventarioJugador.findIndex(
+      s => s && s.tipo === "semilla" && s.cantidad < MAX_STACK
+    );
+    if (stackIdx !== -1) {
+      inventarioJugador[stackIdx].cantidad += 1;
+      mapaArray[y][x] = "C";
+      actualizarMapaYJugador();
+      return;
+    }
+    const libre = inventarioJugador.findIndex(s => !s);
+    if (libre !== -1) {
+      inventarioJugador[libre] = { tipo: "semilla", cantidad: 1 };
       mapaArray[y][x] = "C";
       actualizarMapaYJugador();
     } else {
@@ -252,7 +431,7 @@ function mover(dir) {
   else if (dir === 'down') ny++;
   else if (dir === 'left') nx--;
   else if (dir === 'right') nx++;
-  if (esTransitable(nx, ny) && !hayJugadorEn(nx, ny)) { // Evita moverse encima de otro jugador
+  if (esTransitable(nx, ny) && !hayJugadorEn(nx, ny)) {
     posX = nx;
     posY = ny;
     set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
@@ -287,14 +466,12 @@ get(mapaGlobalRef).then(snapshot => {
     set(mapaGlobalRef, mapaFijo);
     mapaArray = copiarMapa(mapaFijo);
   }
-  // No llamamos a dibujarMapa aquí, sino que lo hacemos al recibir jugadores
 });
 
 onValue(mapaGlobalRef, (snapshot) => {
   const data = snapshot.val();
   if (Array.isArray(data) && data.length === alto) {
     mapaArray = copiarMapa(data);
-    // No llamamos a dibujarMapa aquí, sino que lo hacemos al recibir jugadores
   }
 });
 
@@ -328,4 +505,33 @@ get(jugadorRef).then(snapshot => {
       dibujarInventario(inventarioJugador);
     }
   });
+});
+
+// --- Sincroniza semillas para crecer si se reinicia la página ---
+onValue(ref(db, "semillas"), (snapshot) => {
+  const semillas = snapshot.val() || {};
+  for (const key in semillas) {
+    const s = semillas[key];
+    if (s && s.crecerEn && Date.now() > s.crecerEn) {
+      if (mapaArray[s.y][s.x] === SEMILLA) {
+        mapaArray[s.y][s.x] = ARBOL;
+        set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
+      }
+      set(ref(db, "semillas/" + key), null);
+    } else if (s && s.crecerEn && Date.now() < s.crecerEn) {
+      // Agenda crecimiento si hay semillas pendientes
+      setTimeout(() => {
+        get(ref(db, "semillas/" + key)).then(snapshot => {
+          const data = snapshot.val();
+          if (data && data.crecerEn <= Date.now()) {
+            if (mapaArray[data.y][data.x] === SEMILLA) {
+              mapaArray[data.y][data.x] = ARBOL;
+              set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
+            }
+            set(ref(db, "semillas/" + key), null);
+          }
+        });
+      }, s.crecerEn - Date.now() + 500);
+    }
+  }
 });
