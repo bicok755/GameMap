@@ -21,7 +21,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// Permite usar ?jugadorId=... en la URL para reconectar como el mismo jugador
 let playerId = new URLSearchParams(location.search).get('jugadorId');
 if (!playerId) {
   playerId = localStorage.getItem("jugadorId") || Math.random().toString(36).substring(2);
@@ -40,7 +39,6 @@ const INVENTARIO_SIZE = 36;
 const BLOQUE_ROJO = "B";
 const MAX_STACK = 999;
 
-// Mapa inicial
 const mapaFijo = [
   "CCCCCCCC",
   "CCCAACCC",
@@ -67,6 +65,9 @@ function inventarioInicial() {
 
 let inventarioJugador = inventarioInicial();
 let slotSeleccionado = null;
+
+// Mantén la lista de jugadores en memoria para chequeo rápido
+let jugadoresActuales = {};
 
 function dibujarInventario(inventario) {
   let invDiv = document.getElementById('inventario');
@@ -133,6 +134,17 @@ function adyacente(x1, y1, x2, y2) {
   return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1 && !(x1 === x2 && y1 === y2);
 }
 
+// Chequea si hay algún jugador en la posición (x, y)
+function hayJugadorEn(x, y) {
+  for (const id in jugadoresActuales) {
+    const p = jugadoresActuales[id];
+    if (p && typeof p.x === 'number' && typeof p.y === 'number') {
+      if (p.x === x && p.y === y) return true;
+    }
+  }
+  return false;
+}
+
 function dibujarMapa() {
   for (let y = 0; y < alto; y++) {
     for (let x = 0; x < ancho; x++) {
@@ -161,6 +173,7 @@ function dibujarMapa() {
 }
 
 function dibujarJugadores(jugadores) {
+  jugadoresActuales = jugadores; // Actualiza la referencia global
   dibujarMapa();
   for (const id in jugadores) {
     const p = jugadores[id];
@@ -182,7 +195,8 @@ function manejarClickCelda(x, y) {
     inventarioJugador[slotSeleccionado].tipo === 'rojo' &&
     inventarioJugador[slotSeleccionado].cantidad > 0 &&
     esVacio(x, y) &&
-    adyacente(posX, posY, x, y)
+    adyacente(posX, posY, x, y) &&
+    !hayJugadorEn(x, y) // <-- NO permitir si hay jugador presente
   ) {
     mapaArray[y][x] = BLOQUE_ROJO;
     inventarioJugador[slotSeleccionado].cantidad -= 1;
@@ -227,7 +241,6 @@ function actualizarMapaYJugador() {
   set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
   set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
   dibujarInventario(inventarioJugador);
-  // NO dibujarMapa ni dibujarJugadores aquí, eso lo hacen los onValue
 }
 
 // --- Movimiento ---
@@ -239,7 +252,7 @@ function mover(dir) {
   else if (dir === 'down') ny++;
   else if (dir === 'left') nx--;
   else if (dir === 'right') nx++;
-  if (esTransitable(nx, ny)) {
+  if (esTransitable(nx, ny) && !hayJugadorEn(nx, ny)) { // Evita moverse encima de otro jugador
     posX = nx;
     posY = ny;
     set(jugadorRef, { x: posX, y: posY, inventario: inventarioJugador });
