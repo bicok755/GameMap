@@ -1,14 +1,12 @@
-// ----- CONSTANTES Y DATOS DE OBJETOS -----
+// --- DATOS Y MODELO ---
 const OBJETOS = {
-  ROJO:   { id: 1, nombre: "Bloque Rojo", icono: "🟥", tipo: "bloque" },
-  MADERA: { id: 2, nombre: "Bloque de Madera", icono: "🪵", tipo: "bloque" },
-  SEMILLA:{ id: 3, nombre: "Semilla de Árbol", icono: "🌱", tipo: "item" },
-  ARBOL:  { id: 4, nombre: "Árbol", icono: "🌳", tipo: "bloque" }
+  ROJO:   { id: 1, icono: "🟥", tipo: "bloque" },
+  MADERA: { id: 2, icono: "🪵", tipo: "bloque" },
+  SEMILLA:{ id: 3, icono: "🌱", tipo: "item"  },
+  ARBOL:  { id: 4, icono: "🌳", tipo: "bloque" }
 };
 const ID_TO_OBJ = Object.fromEntries(Object.values(OBJETOS).map(o => [o.id, o]));
-
-// 0 = vacío, 1 = bloque rojo, 2 = madera, 3 = semilla, 4 = árbol
-const ancho = 8, alto = 8;
+const MAP_ANCHO = 8, MAP_ALTO = 8;
 let mapa = [
   [0,0,0,0,0,0,0,0],
   [0,0,4,4,0,0,0,0],
@@ -19,13 +17,12 @@ let mapa = [
   [0,0,0,0,0,0,0,0],
   [0,0,0,0,0,0,0,0],
 ];
-
 let inventario = Array(36).fill(null);
 inventario[0] = { id: OBJETOS.ROJO.id, cantidad: 3 };
-
 let jugador = { x: 1, y: 1 };
+let selectedSlot = 0;
 
-// ----- FUNCIONES DE INVENTARIO -----
+// --- FUNCIONES INVENTARIO ---
 function agregarAlInventario(id, cantidad) {
   while (cantidad > 0) {
     let slot = inventario.find(s => s && s.id === id && s.cantidad < 999);
@@ -55,7 +52,7 @@ function quitarDelInventario(id) {
   return false;
 }
 
-// ----- FUNCIONES DE BLOQUES Y DROPS -----
+// --- FUNCIONES BLOQUES ---
 function obtenerDrops(id) {
   if (id === OBJETOS.ARBOL.id) {
     return [
@@ -93,25 +90,25 @@ function ponerBloque(x, y, id) {
   }
 }
 
-// ----- RENDER -----
+// --- RENDER ---
 function render() {
-  // Mapa
+  // MAPA
   const mapaDiv = document.getElementById('mapa');
   mapaDiv.innerHTML = "";
-  for (let y = 0; y < alto; y++) {
-    for (let x = 0; x < ancho; x++) {
+  for (let y = 0; y < MAP_ALTO; y++) {
+    for (let x = 0; x < MAP_ANCHO; x++) {
       let celda = document.createElement('div');
       celda.className = 'celda';
-      celda.style.width = celda.style.height = "32px";
-      celda.style.display = "inline-block";
-      celda.style.border = "1px solid #ccc";
-      celda.style.textAlign = "center";
-      celda.style.verticalAlign = "middle";
-      celda.style.fontSize = "25px";
-      celda.style.background = (jugador.x === x && jugador.y === y) ? "#ffe082" : "#fafafa";
       let id = mapa[y][x];
-      celda.textContent = id ? ID_TO_OBJ[id].icono : "";
+      if (id === 0) celda.classList.add('cesped');
+      if (jugador.x === x && jugador.y === y) {
+        celda.classList.add('jugador');
+        celda.textContent = "🧍";
+      } else if (id) {
+        celda.textContent = ID_TO_OBJ[id].icono;
+      }
       celda.onclick = function() {
+        if (jugador.x === x && jugador.y === y) return;
         if (id === 0 && selectedSlot !== null && inventario[selectedSlot]) {
           ponerBloque(x, y, inventario[selectedSlot].id);
         } else if (id > 0) {
@@ -120,64 +117,61 @@ function render() {
       };
       mapaDiv.appendChild(celda);
     }
-    mapaDiv.appendChild(document.createElement('br'));
   }
-  // Inventario
+  // INVENTARIO
   const invDiv = document.getElementById('inventario');
   invDiv.innerHTML = "";
   for (let i = 0; i < 36; i++) {
     let slot = document.createElement('div');
-    slot.className = 'slot-inventario';
-    slot.style.width = slot.style.height = "32px";
-    slot.style.display = "inline-block";
-    slot.style.border = (selectedSlot === i ? "2px solid #2196f3" : "1px solid #888");
-    slot.style.margin = "2px";
-    slot.style.textAlign = "center";
-    slot.style.verticalAlign = "middle";
-    slot.style.fontSize = "22px";
-    slot.style.background = "#fff";
+    slot.className = 'slot-inventario' + (selectedSlot === i ? ' selected' : '');
     if (inventario[i]) {
       let obj = ID_TO_OBJ[inventario[i].id];
-      slot.textContent = obj.icono + (inventario[i].cantidad > 1 ? " " + inventario[i].cantidad : "");
-      slot.title = obj.nombre + " (" + inventario[i].cantidad + ")";
+      slot.textContent = obj.icono;
+      if (inventario[i].cantidad > 1) {
+        const cant = document.createElement('span');
+        cant.className = 'cantidad';
+        cant.textContent = inventario[i].cantidad;
+        slot.appendChild(cant);
+      }
     }
     slot.onclick = () => {
       selectedSlot = (selectedSlot === i ? null : i);
       render();
     };
     invDiv.appendChild(slot);
-    if ((i+1)%9===0) invDiv.appendChild(document.createElement('br'));
   }
 }
-let selectedSlot = 0;
+render();
 
-// ----- MOVIMIENTO -----
+// --- MOVIMIENTO ---
 function mover(dx, dy) {
   let nx = jugador.x + dx, ny = jugador.y + dy;
-  if (nx >= 0 && nx < ancho && ny >= 0 && ny < alto) {
+  if (nx >= 0 && nx < MAP_ANCHO && ny >= 0 && ny < MAP_ALTO) {
     jugador.x = nx; jugador.y = ny;
     render();
   }
 }
+document.getElementById("btn-up").onclick = () => mover(0,-1);
+document.getElementById("btn-down").onclick = () => mover(0,1);
+document.getElementById("btn-left").onclick = () => mover(-1,0);
+document.getElementById("btn-right").onclick = () => mover(1,0);
 
-// ----- UI BÁSICA -----
-window.onload = function() {
-  if (!document.getElementById('ui')) {
-    const ui = document.createElement('div');
-    ui.id = "ui";
-    ui.innerHTML = `
-      <div>
-        <button onclick="mover(0,-1)">⬆️</button>
-        <button onclick="mover(-1,0)">⬅️</button>
-        <button onclick="mover(1,0)">➡️</button>
-        <button onclick="mover(0,1)">⬇️</button>
-      </div>
-      <div id="mapa"></div>
-      <div style="margin:8px 0 4px 0;font-weight:bold">Inventario</div>
-      <div id="inventario"></div>
-    `;
-    document.body.appendChild(ui);
+// --- SWIPE PARA MOVER ---
+let touchStartX, touchStartY;
+document.getElementById('mapa').addEventListener('touchstart', ev => {
+  if (ev.touches.length === 1) {
+    touchStartX = ev.touches[0].clientX;
+    touchStartY = ev.touches[0].clientY;
   }
-  render();
-};
-window.mover = mover; // para los botones
+});
+document.getElementById('mapa').addEventListener('touchend', ev => {
+  if (typeof touchStartX === "number" && ev.changedTouches.length === 1) {
+    let dx = ev.changedTouches[0].clientX - touchStartX;
+    let dy = ev.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 30 || Math.abs(dy) > 30) {
+      if (Math.abs(dx) > Math.abs(dy)) mover(dx > 0 ? 1 : -1, 0);
+      else mover(0, dy > 0 ? 1 : -1);
+    }
+  }
+  touchStartX = touchStartY = null;
+});
