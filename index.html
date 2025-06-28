@@ -2,24 +2,24 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mapa 8x8 móvil compacto</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mapa 8x8 compacto para móvil</title>
+  <link rel="stylesheet" href="main.css" />
 </head>
 <body>
-
-<h1>Mapa 8x8 compacto para móvil</h1>
-<div id="mapa"></div>
-<div id="inventario"></div>
-
-<div class="controles" role="group" aria-label="Controles de movimiento">
-  <button id="up" aria-label="Mover arriba">⬆️</button><br />
-  <button id="left" aria-label="Mover izquierda">⬅️</button>
-  <button id="down" aria-label="Mover abajo">⬇️</button>
-  <button id="right" aria-label="Mover derecha">➡️</button>
-</div>
-
-<!-- Importante: Carga el javascript como módulo -->
-<script type="module" src="./main.js"></script>
+  <div class="container">
+    <h1>Mapa 8x8 compacto para móvil</h1>
+    <div id="mapa"></div>
+    <div id="inventario"></div>
+    <div class="controles">
+      <button id="btn-up">⬆️</button>
+      <div>
+        <button id="btn-left">⬅️</button>
+        <button id="btn-down">⬇️</button>
+        <button id="btn-right">➡️</button>
+      </div>
+    </div>
+  </div>
+  <script src="main.js"></script>
 </body>
 </html>
