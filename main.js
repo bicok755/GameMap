@@ -6,11 +6,9 @@ import {
   onValue,
   get,
   onDisconnect,
-  runTransaction,
 } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 const firebaseConfig = {
-  // ...tu configuración...
   apiKey: "AIzaSyCuz3aFUEd5ltVJzqDphvo3Y2AwAJv_Wt8",
   authDomain: "mapa-20bb9.firebaseapp.com",
   databaseURL: "https://mapa-20bb9-default-rtdb.europe-west1.firebasedatabase.app/",
@@ -143,7 +141,6 @@ function esBloqueRojo(x, y) {
   return x >= 0 && x < ancho && y >= 0 && y < alto && (mapaArray[y][x] === BLOQUE_ROJO);
 }
 
-// Permite colocar o recoger en cruz o en diagonal (adyacentes 8-direcciones)
 function adyacente(x1, y1, x2, y2) {
   return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1 && !(x1 === x2 && y1 === y2);
 }
@@ -208,27 +205,22 @@ function dibujarJugadores(jugadores) {
 // --- GESTIÓN DE SEMILLAS QUE CRECEN ---
 
 function ponerSemilla(x, y) {
-  // Deja la semilla en el mapa y agenda su crecimiento en 15s
   mapaArray[y][x] = SEMILLA;
   actualizarMapaYJugador();
 
-  // Guardar en la base de datos cuándo debe crecer
-  // Se guarda en /semillas/x_y: {x, y, timestamp}
   const semillasRef = ref(db, "semillas/" + x + "_" + y);
   const crecerEn = Date.now() + 15000;
   set(semillasRef, {x, y, crecerEn});
 
   setTimeout(() => {
-    // Volver a consultar si sigue la semilla y si ya es hora de crecer
     get(semillasRef).then(snapshot => {
       const data = snapshot.val();
       if (data && data.crecerEn <= Date.now()) {
-        // Solo crece si sigue siendo semilla
         if (mapaArray[y][x] === SEMILLA) {
           mapaArray[y][x] = ARBOL;
           set(mapaGlobalRef, mapaArray.map(fila => fila.join('')));
         }
-        set(semillasRef, null); // quitamos la info de la semilla
+        set(semillasRef, null);
       }
     });
   }, 15500);
@@ -275,12 +267,10 @@ function manejarClickCelda(x, y) {
       inventarioJugador[libre] = { tipo: "rojo", cantidad: 1 };
       mapaArray[y][x] = "C";
       actualizarMapaYJugador();
-    } else {
-      alert("¡Inventario lleno!");
     }
     return;
   }
-  // RECOGER árbol: da 4 madera y 1 semilla
+  // RECOGER árbol: da 4 madera y 1 semilla, descarta lo que no cabe
   if (
     mapaArray[y][x] === ARBOL &&
     adyacente(posX, posY, x, y)
@@ -302,8 +292,7 @@ function manejarClickCelda(x, y) {
           inventarioJugador[libre] = { tipo: "madera", cantidad: porMeter };
           maderaRestante -= porMeter;
         } else {
-          alert("¡Inventario lleno! Solo recogiste parte de la madera.");
-          break;
+          break; // Lo que no cabe se elimina
         }
       }
     }
@@ -318,9 +307,8 @@ function manejarClickCelda(x, y) {
         const libre = inventarioJugador.findIndex(s => !s);
         if (libre !== -1) {
           inventarioJugador[libre] = { tipo: "semilla", cantidad: semillaRestante };
-        } else {
-          alert("¡Inventario lleno! No pudiste recoger semillas.");
         }
+        // Si no hay sitio, se elimina la semilla sobrante
       }
     }
     mapaArray[y][x] = "C";
@@ -346,8 +334,6 @@ function manejarClickCelda(x, y) {
       inventarioJugador[libre] = { tipo: "madera", cantidad: 1 };
       mapaArray[y][x] = "C";
       actualizarMapaYJugador();
-    } else {
-      alert("¡Inventario lleno!");
     }
     return;
   }
@@ -388,7 +374,7 @@ function manejarClickCelda(x, y) {
     ponerSemilla(x, y);
     return;
   }
-  // RECOGER semilla del mapa (por si existiera, aunque no se deja nunca suelta, solo por si acaso)
+  // RECOGER semilla del mapa (por si existiera)
   if (
     mapaArray[y][x] === SEMILLA &&
     adyacente(posX, posY, x, y)
@@ -407,8 +393,6 @@ function manejarClickCelda(x, y) {
       inventarioJugador[libre] = { tipo: "semilla", cantidad: 1 };
       mapaArray[y][x] = "C";
       actualizarMapaYJugador();
-    } else {
-      alert("¡Inventario lleno!");
     }
     return;
   }
@@ -507,7 +491,6 @@ get(jugadorRef).then(snapshot => {
   });
 });
 
-// --- Sincroniza semillas para crecer si se reinicia la página ---
 onValue(ref(db, "semillas"), (snapshot) => {
   const semillas = snapshot.val() || {};
   for (const key in semillas) {
@@ -519,7 +502,6 @@ onValue(ref(db, "semillas"), (snapshot) => {
       }
       set(ref(db, "semillas/" + key), null);
     } else if (s && s.crecerEn && Date.now() < s.crecerEn) {
-      // Agenda crecimiento si hay semillas pendientes
       setTimeout(() => {
         get(ref(db, "semillas/" + key)).then(snapshot => {
           const data = snapshot.val();
